@@ -17,7 +17,7 @@ load_dotenv(dotenv_path=_ENV_PATH)
 
 # ── Gemini ────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-")
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 if not GEMINI_API_KEY:
     raise EnvironmentError(

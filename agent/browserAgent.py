@@ -27,31 +27,30 @@ from utils.logger import logger
 class BrowserAgent:
     """Gemini-powered autonomous browser agent."""
 
-    def run(self, task: str | None = None) -> None:
+    def run(self, task: str | None = None, url: str | None = None) -> None:
         """
-        Execute the agent loop for the given *task*.
+        Execute the agent loop for the given *task* on *url*.
 
         Args:
             task: A plain-English description of what the agent should do.
                   Defaults to the standard form-filling task if not provided.
+            url:  The website to open. Defaults to settings.TARGET_URL.
         """
+        if url is None:
+            url = settings.TARGET_URL
+
         if task is None:
-            task = (
-                "Navigate to the page and identify the Name and Description "
-                "form fields. Fill the Name field with a realistic full name "
-                "and the Description field with a meaningful description. "
-                "Then submit the form."
-            )
+            task = "Explore the page and describe what you see."
 
         logger.info("=" * 60)
         logger.info("Orion Agent starting")
-        logger.info(f"Target URL : {settings.TARGET_URL}")
+        logger.info(f"Target URL : {url}")
         logger.info(f"Task       : {task}")
         logger.info(f"Max steps  : {settings.MAX_ITERATIONS}")
         logger.info("=" * 60)
 
         with sync_playwright() as playwright:
-            page, browser = browser_tools.open_browser(settings.TARGET_URL, playwright)
+            page, browser = browser_tools.open_browser(url, playwright)
 
             # Initial screenshot
             screenshot_path = browser_tools.take_screenshot(page, "initial")

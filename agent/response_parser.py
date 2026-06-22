@@ -17,7 +17,16 @@ from utils.logger import logger
 AgentAction = Dict[str, Any]
 
 # Known valid action types
-_VALID_ACTIONS = {"fill_form", "scroll", "click", "task_complete"}
+_VALID_ACTIONS = {
+    "click",
+    "type",
+    "press_enter",
+    "scroll",
+    "navigate",
+    "fill_form",
+    "done",
+    "task_complete",  # legacy alias for done
+}
 
 
 class InvalidResponseError(Exception):
@@ -82,22 +91,39 @@ def _validate(data: AgentAction) -> None:
             f"Unknown action '{action}'. Expected one of: {_VALID_ACTIONS}"
         )
 
-    if action == "fill_form":
-        if "fields" not in data or not isinstance(data["fields"], dict):
+    # click: requires either 'target' (text) OR ('x' and 'y') coordinates
+    if action == "click":
+        if "target" not in data and ("x" not in data or "y" not in data):
             raise InvalidResponseError(
-                "Action 'fill_form' requires a 'fields' dict. Got: {data}"
-            )
-        if not data["fields"]:
-            raise InvalidResponseError(
-                "Action 'fill_form' has an empty 'fields' dict."
+                "Action 'click' requires a 'target' string or 'x'/'y' coordinates."
             )
 
+    # type: requires 'target' input description and 'text' to type
+    if action == "type":
+        if "text" not in data:
+            raise InvalidResponseError(
+                "Action 'type' requires a 'text' key with the string to type."
+            )
+
+    # scroll: requires direction
     if action == "scroll" and "direction" not in data:
         raise InvalidResponseError(
             "Action 'scroll' requires a 'direction' key ('up' or 'down')."
         )
 
-    if action == "click" and ("x" not in data or "y" not in data):
+    # navigate: requires url
+    if action == "navigate" and "url" not in data:
         raise InvalidResponseError(
-            "Action 'click' requires 'x' and 'y' coordinates."
+            "Action 'navigate' requires a 'url' key."
         )
+
+    # fill_form: requires non-empty fields dict
+    if action == "fill_form":
+        if "fields" not in data or not isinstance(data["fields"], dict):
+            raise InvalidResponseError(
+                f"Action 'fill_form' requires a 'fields' dict. Got: {data}"
+            )
+        if not data["fields"]:
+            raise InvalidResponseError(
+                "Action 'fill_form' has an empty 'fields' dict."
+            )
