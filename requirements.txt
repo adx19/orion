@@ -1,0 +1,13 @@
+# Core browser automation
+playwright==1.60.0
+
+# Gemini AI SDK
+google-generativeai>=0.8.0
+
+# Environment variable loading
+python-dotenv==1.2.2
+
+# Supporting packages (pinned for reproducibility)
+greenlet==3.5.1
+pyee==13.0.1
+typing_extensions==4.15.0
