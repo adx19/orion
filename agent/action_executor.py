@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from agent import browser_tools
-from agent.response_parser import AgentAction
+from agent.response_parser import AgentAction, click_coordinates, click_target
 from utils.logger import logger
 
 if TYPE_CHECKING:
@@ -89,9 +89,9 @@ def execute(action: AgentAction, page: "Page") -> ActionResult:
 
 def _click(action: AgentAction, page: "Page") -> ActionResult:
     """Click an element by visible text/target description or by x,y coordinates."""
-    target: str = action.get("target", "")
+    target = click_target(action)
 
-    if target:
+    if target is not None:
         logger.info(f"Clicking element: '{target}'")
         try:
             # Try role=button first, then links, then any element with matching text
@@ -121,9 +121,13 @@ def _click(action: AgentAction, page: "Page") -> ActionResult:
         except Exception as exc:  # noqa: BLE001
             return _fail(f"Click on '{target}' failed: {exc}")
 
-    # Fallback: coordinate click
-    x = float(action.get("x", 0))
-    y = float(action.get("y", 0))
+    # No usable target: require explicit coordinates — never default to (0, 0)
+    coords = click_coordinates(action)
+    if coords is None:
+        return _fail(
+            "Click rejected: 'target' is empty and no valid 'x'/'y' coordinates were given"
+        )
+    x, y = coords
     logger.info(f"Clicking at coordinates ({x}, {y})")
     try:
         browser_tools.click_on_screen(page, x, y)

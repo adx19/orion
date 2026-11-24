@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
 from utils.logger import logger
 
@@ -66,6 +66,25 @@ def parse(raw_response: str) -> AgentAction:
     return data
 
 
+def click_target(data: AgentAction) -> Optional[str]:
+    """Return the click target if it is a non-empty string, else None."""
+    target = data.get("target")
+    if isinstance(target, str) and target.strip():
+        return target.strip()
+    return None
+
+
+def click_coordinates(data: AgentAction) -> Optional[Tuple[float, float]]:
+    """Return (x, y) if both are present, numeric and non-negative, else None."""
+    coords = []
+    for key in ("x", "y"):
+        value = data.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+            return None
+        coords.append(float(value))
+    return coords[0], coords[1]
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _strip_code_fences(text: str) -> str:
@@ -91,11 +110,13 @@ def _validate(data: AgentAction) -> None:
             f"Unknown action '{action}'. Expected one of: {_VALID_ACTIONS}"
         )
 
-    # click: requires either 'target' (text) OR ('x' and 'y') coordinates
+    # click: requires a non-empty 'target' string OR numeric 'x' and 'y'
     if action == "click":
-        if "target" not in data and ("x" not in data or "y" not in data):
+        if click_target(data) is None and click_coordinates(data) is None:
             raise InvalidResponseError(
-                "Action 'click' requires a 'target' string or 'x'/'y' coordinates."
+                "Action 'click' requires a non-empty 'target' string or numeric "
+                f"'x'/'y' coordinates. Got target={data.get('target')!r}, "
+                f"x={data.get('x')!r}, y={data.get('y')!r}."
             )
 
     # type: requires 'target' input description and 'text' to type
