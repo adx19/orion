@@ -109,21 +109,7 @@ def _click(action: AgentAction, page: "Page") -> ActionResult:
                     return _ok(f"Clicked '{target}'")
 
             logger.warning(f"Could not find element with target='{target}' — trying text search")
-            # Fallback: JavaScript click on element containing the text
-            # The target is passed as an argument, never interpolated into the code
-            found = page.evaluate(
-                """(needle) => {
-                    const els = [...document.querySelectorAll('a, button, [role=button], [role=link], input[type=submit]')];
-                    const match = els.find(e => e.innerText && e.innerText.toLowerCase().includes(needle));
-                    if (match) match.click();
-                    return !!match;
-                }""",
-                target.lower(),
-            )
-            if not found:
-                return _fail(f"Click failed: no clickable element matching '{target}' was found")
-            page.wait_for_timeout(1500)
-            return _ok(f"Clicked '{target}' via JavaScript fallback")
+            return _js_click_fallback(page, target)
         except Exception as exc:  # noqa: BLE001
             return _fail(f"Click on '{target}' failed: {exc}")
 
@@ -140,6 +126,60 @@ def _click(action: AgentAction, page: "Page") -> ActionResult:
     except Exception as exc:  # noqa: BLE001
         return _fail(f"Click at ({x}, {y}) failed: {exc}")
     return _ok(f"Clicked at ({x}, {y})")
+
+
+def _js_click_fallback(page: "Page", target: str) -> ActionResult:
+    """
+    Click the first link/button whose text contains *target* using JavaScript,
+    then verify that the click did something: the URL changed, the document
+    was replaced, or the DOM mutated. Reports failure if nothing happened.
+    """
+    url_before = page.url
+    # The target is passed as an argument, never interpolated into the code
+    found = page.evaluate(
+        """(needle) => {
+            const els = [...document.querySelectorAll('a, button, [role=button], [role=link], input[type=submit]')];
+            const match = els.find(e => e.innerText && e.innerText.toLowerCase().includes(needle));
+            if (!match) return false;
+            window.__orionMutations = 0;
+            window.__orionObserver = new MutationObserver(
+                (records) => { window.__orionMutations += records.length; }
+            );
+            window.__orionObserver.observe(document, {
+                subtree: true, childList: true, attributes: true, characterData: true,
+            });
+            match.click();
+            return true;
+        }""",
+        target.lower(),
+    )
+    if not found:
+        return _fail(f"Click failed: no clickable element matching '{target}' was found")
+
+    page.wait_for_timeout(1500)
+
+    if page.url != url_before:
+        return _ok(f"Clicked '{target}' via JavaScript fallback; page navigated to {page.url}")
+
+    try:
+        mutations = page.evaluate(
+            """() => {
+                if (window.__orionMutations === undefined) return -1;  // new document
+                window.__orionObserver.disconnect();
+                return window.__orionMutations;
+            }"""
+        )
+    except Exception:  # noqa: BLE001 — execution context destroyed by navigation
+        return _ok(f"Clicked '{target}' via JavaScript fallback; page started navigating")
+
+    if mutations == -1:
+        return _ok(f"Clicked '{target}' via JavaScript fallback; page reloaded")
+    if mutations > 0:
+        return _ok(f"Clicked '{target}' via JavaScript fallback; page content changed")
+    return _fail(
+        f"Click on '{target}' had no visible effect: an element matched and was clicked "
+        "via JavaScript, but the URL and page content did not change"
+    )
 
 
 def _type(action: AgentAction, page: "Page") -> ActionResult:
