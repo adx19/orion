@@ -83,7 +83,7 @@ class BrowserAgent:
 
             # 3. Ask Gemini
             try:
-                raw_response = gemini_client.send_prompt(prompt)
+                raw_response = gemini_client.send_prompt(prompt, ctx.get("screenshot_path"))
             except gemini_client.GeminiError as exc:
                 logger.error(f"Gemini API failure: {exc}")
                 break

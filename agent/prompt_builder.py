@@ -24,6 +24,8 @@ RULES:
 1. Respond with valid JSON ONLY — no markdown fences, no prose outside the JSON.
 2. Always include a "thought" key explaining your reasoning.
 3. Choose exactly ONE action per response from the list below.
+4. A screenshot of the current page is attached when available. Use it
+   together with the page state below to decide what to do.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 AVAILABLE ACTIONS:

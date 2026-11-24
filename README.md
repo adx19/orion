@@ -242,6 +242,6 @@ Console output uses the `[LEVEL]` prefix format:
 |---|---|
 | Python 3.10+ | Core language |
 | Playwright | Browser automation |
-| Google Gemini (`google-generativeai`) | AI reasoning engine |
+| Google Gemini (`google-genai`) | AI reasoning engine |
 | python-dotenv | `.env` configuration |
 | Python `logging` | Structured file + console logging |
