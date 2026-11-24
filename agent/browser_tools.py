@@ -22,10 +22,15 @@ from utils.logger import logger
 
 def open_browser(url: str, playwright: Playwright) -> Tuple[Page, Browser]:
     """Launch Chromium, open a new page, and navigate to *url*."""
-    logger.info("Browser launched")
     browser = playwright.chromium.launch(headless=False)
-    page = browser.new_page()
-    navigate_to_url(page, url)
+    logger.info("Browser launched")
+    try:
+        page = browser.new_page()
+        navigate_to_url(page, url)
+    except Exception:
+        # The caller never receives the browser on failure, so close it here
+        browser.close()
+        raise
     return page, browser
 
 

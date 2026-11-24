@@ -54,18 +54,25 @@ class BrowserAgent:
         logger.info("=" * 60)
 
         with sync_playwright() as playwright:
-            page, browser = browser_tools.open_browser(url, playwright)
-
-            # Initial screenshot
-            screenshot_path = browser_tools.take_screenshot(page, "initial")
-
+            browser = None
+            page = None
             try:
+                page, browser = browser_tools.open_browser(url, playwright)
+
+                # Initial screenshot
+                screenshot_path = browser_tools.take_screenshot(page, "initial")
+
                 self._agent_loop(page, task, screenshot_path)
             except Exception as exc:  # noqa: BLE001
-                logger.error(f"Agent loop terminated with an error: {exc}")
-                browser_tools.take_screenshot(page, "error_state")
+                logger.error(f"Agent terminated with an error: {exc}")
+                if page is not None:
+                    try:
+                        browser_tools.take_screenshot(page, "error_state")
+                    except Exception as shot_exc:  # noqa: BLE001
+                        logger.warning(f"Could not capture error screenshot: {shot_exc}")
             finally:
-                browser_tools.close_browser(browser)
+                if browser is not None:
+                    browser_tools.close_browser(browser)
 
         logger.info("=" * 60)
         logger.info("Orion Agent finished")
