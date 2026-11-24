@@ -110,12 +110,16 @@ def _click(action: AgentAction, page: "Page") -> ActionResult:
 
             logger.warning(f"Could not find element with target='{target}' — trying text search")
             # Fallback: JavaScript click on element containing the text
-            found = page.evaluate(f"""() => {{
-                const els = [...document.querySelectorAll('a, button, [role=button], [role=link], input[type=submit]')];
-                const match = els.find(e => e.innerText && e.innerText.toLowerCase().includes({repr(target.lower())}));
-                if (match) match.click();
-                return !!match;
-            }}""")
+            # The target is passed as an argument, never interpolated into the code
+            found = page.evaluate(
+                """(needle) => {
+                    const els = [...document.querySelectorAll('a, button, [role=button], [role=link], input[type=submit]')];
+                    const match = els.find(e => e.innerText && e.innerText.toLowerCase().includes(needle));
+                    if (match) match.click();
+                    return !!match;
+                }""",
+                target.lower(),
+            )
             if not found:
                 return _fail(f"Click failed: no clickable element matching '{target}' was found")
             page.wait_for_timeout(1500)
@@ -162,12 +166,20 @@ def _type(action: AgentAction, page: "Page") -> ActionResult:
 
         # Fallback: first visible input
         logger.warning(f"Could not find input '{target}' — typing into first visible input")
-        found = page.evaluate(f"""() => {{
-            const inputs = [...document.querySelectorAll('input[type=text], input[type=search], textarea, [role=searchbox]')];
-            const visible = inputs.find(el => el.getBoundingClientRect().width > 0);
-            if (visible) {{ visible.focus(); visible.value = {repr(text)}; visible.dispatchEvent(new Event('input', {{bubbles: true}})); }}
-            return !!visible;
-        }}""")
+        # The text is passed as an argument, never interpolated into the code
+        found = page.evaluate(
+            """(value) => {
+                const inputs = [...document.querySelectorAll('input[type=text], input[type=search], textarea, [role=searchbox]')];
+                const visible = inputs.find(el => el.getBoundingClientRect().width > 0);
+                if (visible) {
+                    visible.focus();
+                    visible.value = value;
+                    visible.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                return !!visible;
+            }""",
+            text,
+        )
         if not found:
             return _fail(f"Type failed: no input matching '{target}' and no visible text input on the page")
         page.wait_for_timeout(500)
