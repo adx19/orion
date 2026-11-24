@@ -78,7 +78,8 @@ f) Navigate directly to a URL:
      "url": "<full URL>"
    }
 
-g) Fill one or more form fields by their label (only use for explicit form-filling tasks):
+g) Fill one or more form fields by their label (only use for explicit form-filling tasks).
+   The form is submitted only if the USER TASK explicitly says to submit it:
    {
      "thought": "<brief reasoning>",
      "action": "fill_form",

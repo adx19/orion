@@ -108,7 +108,7 @@ class BrowserAgent:
                 continue
 
             # 5. Execute the action
-            result = action_executor.execute(agent_action, page)
+            result = action_executor.execute(agent_action, page, task)
             history.append({"action": agent_action, "ok": result.ok, "message": result.message})
 
             # 6. Capture updated state

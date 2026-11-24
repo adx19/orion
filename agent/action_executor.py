@@ -10,6 +10,7 @@ Supports the full general-purpose action set:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -48,9 +49,10 @@ def _fail(message: str) -> ActionResult:
     return ActionResult(FAILED, message)
 
 
-def execute(action: AgentAction, page: "Page") -> ActionResult:
+def execute(action: AgentAction, page: "Page", task: str = "") -> ActionResult:
     """
-    Execute *action* against *page*.
+    Execute *action* against *page*. *task* is the user's task; it decides
+    whether fill_form may submit the form.
 
     Returns an ActionResult whose status is:
         DONE     – the agent loop should stop (task complete)
@@ -75,7 +77,7 @@ def execute(action: AgentAction, page: "Page") -> ActionResult:
         return _navigate(action, page)
 
     if action_type == "fill_form":
-        return _fill_form(action, page)
+        return _fill_form(action, page, task)
 
     if action_type in ("done", "task_complete"):
         reason = action.get("reason", action.get("thought", "Task complete."))
@@ -205,8 +207,18 @@ def _navigate(action: AgentAction, page: "Page") -> ActionResult:
     return _ok(f"Navigated to {url}")
 
 
-def _fill_form(action: AgentAction, page: "Page") -> ActionResult:
-    """Fill each field specified in action['fields'] (legacy / explicit form tasks)."""
+def _task_requests_submit(task: str) -> bool:
+    """True if the user's task explicitly asks for the form to be submitted."""
+    if re.search(r"\b(don'?t|do not|without|never|not)\s+(\w+\s+)?submit", task, re.IGNORECASE):
+        return False
+    return re.search(r"\bsubmit", task, re.IGNORECASE) is not None
+
+
+def _fill_form(action: AgentAction, page: "Page", task: str) -> ActionResult:
+    """
+    Fill each field in action['fields']. Submits only if the user's task
+    asks to submit; never declares the task done on its own.
+    """
     fields: dict[str, str] = action.get("fields", {})
     logger.info(f"Filling form — {len(fields)} field(s): {list(fields.keys())}")
 
@@ -215,29 +227,42 @@ def _fill_form(action: AgentAction, page: "Page") -> ActionResult:
         if not browser_tools.fill_field_by_label(page, label, value)
     ]
 
-    if not missing:
-        browser_tools.take_screenshot(page, "form_filled")
-        _try_submit(page)
-        browser_tools.take_screenshot(page, "after_submit")
-        return ActionResult(DONE, f"Filled {len(fields)} field(s) and attempted submit")
+    if missing:
+        filled = [label for label in fields if label not in missing]
+        return _fail(
+            f"Fill form incomplete: could not find field(s) {missing}"
+            + (f"; filled {filled}" if filled else "")
+            + ". They may be off-screen or labelled differently. Form was not submitted."
+        )
 
-    filled = [label for label in fields if label not in missing]
-    return _fail(
-        f"Fill form incomplete: could not find field(s) {missing}"
-        + (f"; filled {filled}" if filled else "")
-        + ". They may be off-screen or labelled differently."
+    browser_tools.take_screenshot(page, "form_filled")
+    filled_msg = f"Filled {len(fields)} field(s): {list(fields.keys())}"
+
+    if not _task_requests_submit(task):
+        return _ok(
+            f"{filled_msg}. Form NOT submitted: the task does not ask to submit. "
+            "Check the screenshot and use 'done' if the task is complete."
+        )
+
+    submitted, submit_msg = _try_submit(page)
+    browser_tools.take_screenshot(page, "after_submit")
+    if not submitted:
+        return _fail(f"{filled_msg}, but {submit_msg}")
+    return _ok(
+        f"{filled_msg}. {submit_msg} "
+        "Check the page for a confirmation or validation errors before using 'done'."
     )
 
 
-def _try_submit(page: "Page") -> None:
-    """Attempt to click a Submit button; log a warning if not found."""
+def _try_submit(page: "Page") -> tuple[bool, str]:
+    """Click a Submit button. Returns (clicked, message)."""
     try:
         submit_btn = page.get_by_role("button", name="Submit")
-        if submit_btn.count() > 0:
-            logger.info("Submitting form")
-            submit_btn.first.click()
-            page.wait_for_timeout(2000)
-        else:
-            logger.warning("No Submit button found — form may auto-submit or require manual action")
+        if submit_btn.count() == 0:
+            return False, "no 'Submit' button was found, so the form was not submitted."
+        logger.info("Submitting form")
+        submit_btn.first.click()
+        page.wait_for_timeout(2000)
+        return True, "Clicked the 'Submit' button."
     except Exception as exc:  # noqa: BLE001
-        logger.warning(f"Submit attempt failed: {exc}")
+        return False, f"clicking 'Submit' failed: {exc}"
