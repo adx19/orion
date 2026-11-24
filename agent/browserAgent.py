@@ -16,6 +16,8 @@ Orchestrates the full Gemini-powered agent loop:
 
 from __future__ import annotations
 
+from collections import deque
+
 from playwright.sync_api import sync_playwright
 
 from agent import action_executor, browser_tools, context_collector, gemini_client, prompt_builder
@@ -26,6 +28,8 @@ from utils.logger import logger
 
 class BrowserAgent:
     """Gemini-powered autonomous browser agent."""
+
+    HISTORY_SIZE = 5  # number of recent actions shown to Gemini
 
     def run(self, task: str | None = None, url: str | None = None) -> None:
         """
@@ -71,6 +75,7 @@ class BrowserAgent:
 
     def _agent_loop(self, page, task: str, initial_screenshot: str) -> None:
         screenshot_path = initial_screenshot
+        history: deque = deque(maxlen=self.HISTORY_SIZE)
 
         for iteration in range(1, settings.MAX_ITERATIONS + 1):
             logger.info(f"--- Agent iteration {iteration}/{settings.MAX_ITERATIONS} ---")
@@ -79,7 +84,7 @@ class BrowserAgent:
             ctx = context_collector.collect(page, task, screenshot_path)
 
             # 2. Build prompt
-            prompt = prompt_builder.build(ctx)
+            prompt = prompt_builder.build(ctx, list(history))
 
             # 3. Ask Gemini
             try:
@@ -93,17 +98,23 @@ class BrowserAgent:
                 agent_action = parse_response(raw_response)
             except InvalidResponseError as exc:
                 logger.error(f"Failed to parse Gemini response: {exc}")
+                history.append({
+                    "action": {"action": "invalid_response"},
+                    "ok": False,
+                    "message": f"Your previous response could not be used: {str(exc).splitlines()[0]}",
+                })
                 # Take a screenshot of the current state and try again
                 screenshot_path = browser_tools.take_screenshot(page, f"parse_error_{iteration}")
                 continue
 
             # 5. Execute the action
             result = action_executor.execute(agent_action, page)
+            history.append({"action": agent_action, "ok": result.ok, "message": result.message})
 
             # 6. Capture updated state
             screenshot_path = browser_tools.take_screenshot(page, f"step_{iteration}")
 
-            if result == action_executor.DONE:
+            if result.status == action_executor.DONE:
                 logger.success("Agent completed the task successfully!")  # type: ignore[attr-defined]
                 return
 

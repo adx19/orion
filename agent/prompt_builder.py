@@ -8,7 +8,12 @@ with no assumptions about form filling or any specific website.
 
 from __future__ import annotations
 
+from typing import Any, Dict, List, Optional
+
 from agent.context_collector import PageContext
+
+# One entry per executed action: {"action": dict, "ok": bool, "message": str}
+HistoryEntry = Dict[str, Any]
 
 _SYSTEM_INSTRUCTIONS = """\
 You are Orion, an autonomous browser agent. Your ONLY job is to complete the
@@ -98,12 +103,35 @@ DECISION GUIDANCE:
 - Only use "fill_form" if the user explicitly asks to fill a form.
 - Use "done" only when the USER TASK has been fully accomplished.
 - If nothing is visible to act on yet, use "scroll" down.
+- Check RECENT ACTIONS before deciding. Do NOT repeat an action that just
+  FAILED in the same way; try a different target, approach, or action.
 """
 
 
-def build(ctx: PageContext) -> str:
+def _describe_action(action: Dict[str, Any]) -> str:
+    """Compact one-line description of an action (without its 'thought')."""
+    parts = [str(action.get("action", "?"))]
+    for key in ("target", "text", "direction", "url", "x", "y", "fields"):
+        if key in action:
+            parts.append(f"{key}={action[key]!r}")
+    return " ".join(parts)
+
+
+def _format_history(history: Optional[List[HistoryEntry]]) -> str:
+    if not history:
+        return "  (no actions taken yet)"
+    lines = []
+    for i, entry in enumerate(history, 1):
+        status = "OK" if entry["ok"] else "FAILED"
+        lines.append(f"  {i}. {_describe_action(entry['action'])}")
+        lines.append(f"     → {status}: {entry['message']}")
+    return "\n".join(lines)
+
+
+def build(ctx: PageContext, history: Optional[List[HistoryEntry]] = None) -> str:
     """
-    Build a Gemini prompt from *ctx*.
+    Build a Gemini prompt from *ctx* and the recent action *history*
+    (oldest first).
 
     Returns the complete prompt string to send to the Gemini API.
     """
@@ -133,6 +161,11 @@ USER TASK:
 {ctx['task']}
 
 You must decide the next browser action that moves the agent closer to completing THIS task.
+
+---
+
+RECENT ACTIONS (oldest first, with results):
+{_format_history(history)}
 
 ---
 
